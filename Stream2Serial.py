@@ -3,6 +3,8 @@
 from __future__ import print_function
 from __future__ import division
 
+import platform         # os identification
+
 import serial           # serial output
 import time             # delays
 #import numpy            # arrays
@@ -16,6 +18,8 @@ import socket
 numPorts = 0            # the number of serial ports in use
 maxPorts = 8            # maximum number of serial ports
 
+
+serialPort = None
 
 ledSerial = []          # serial handles to all connected displays
 ledArea = []            # the area of the movie each port gets, in % (0-100)
@@ -48,8 +52,16 @@ def setup():
     global demoTransmitter
     
     newImageQueue = Queue(2)
-    #serialConfigure("dummy")
-    serialConfigure("COM46")
+
+    print(platform.platform())
+    os = platform.platform()
+    if ('Linux' in os):
+        serialPort = '/dev/ttyACM0'
+    elif ('Windows' in os):
+        serialConfigure("COM46")
+    else:
+        # should not get here
+        serialConfigure("dummy")
     
     # configure input
     #udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)     # UDP
