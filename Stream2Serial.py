@@ -7,8 +7,7 @@ import platform         # os identification
 
 import serial           # serial output
 import time             # delays
-#import numpy            # arrays
-#from PointsAndRectangles import Point,Rect
+#import numpy as np      # arrays
 from PIL import Image   # PIL
 from threading import Thread
 from Queue import Queue
@@ -28,8 +27,8 @@ ledImage = {}           # image sent to each port
 errorCount = 0
 framerate = 0
 
-ledCnt = 60             # Number of lights along the strip
 stripCnt = 32           # Number of strips around the circumference of the sphere
+ledCnt = 60             # Number of lights along the strip
 packet_length = stripCnt*ledCnt*3 + 1
 
 demoMode = True
@@ -63,6 +62,7 @@ def setup():
     else:
         # should not get here
         serialPort = 'dummy'
+    serialPort = 'dummy'
     serialConfigure(serialPort)
     
     # configure input
@@ -119,7 +119,7 @@ def receive(data, ip, port):
         print('Buffer full, dropping frame!')
         return
 
-    newImage = Image.new('RGB',(stripCnt,ledCnt))
+    newImage = Image.new('RGB',(ledCnt, stripCnt))
 
 #    for i in range(stripCnt*ledCnt):
 #        newImage[i] = (int)(0xff<<24 | mapByte(data[i*3 + 1])<<16) | (mapByte(data[i*3 + 2])<<8) | (mapByte(data[i*3 + 3]))
@@ -140,105 +140,122 @@ def receive(data, ip, port):
 def frameUpdate(f):
     global ledImage
     global ledArea
-    global ledData
     global ledSerial
+
 
     for i in range(numPorts):
         # copy a portion of the movie's image to the LED image
+        print(ledImage[i].size)
         imageWidth,imageHeight = ledImage[i].size
-        areaWidth  = ledArea[i][0][0]-ledArea[i][1][0]
-        areaHeight = ledArea[i][0][1]-ledArea[i][1][1]
+        areaX  = ledArea[i][0][0]
+        areaY = ledArea[i][0][1]
+        areaWidth  = ledArea[i][1][0]-ledArea[i][0][0]
+        areaHeight = ledArea[i][1][1]-ledArea[i][0][1]
 
-        xoffset = percentage(imageWidth, areaWidth)
-        yoffset = percentage(imageHeight, areaHeight)
+        xoffset = percentage(imageWidth, areaX)
+        yoffset = percentage(imageHeight, areaY)
         xwidth =  percentage(imageWidth, areaWidth)
         yheight = percentage(imageHeight, areaHeight)
-        print(xoffset,yoffset,xwidth,yheight,0,0,imageWidth,imageHeight,areaWidth,areaHeight)
-        ledPart = ledImage[i].crop(f, ((xoffset, yoffset), (xoffset+xwidth, xoffset+yheight)))
+        #print('xoff',xoffset,'yoff',yoffset,'xw',xwidth,'yh',yheight,0,0,
+        #        'iw',imageWidth,'ih',imageHeight,'aw',areaWidth,'ah',areaHeight)
+        ledPart = ledImage[i].crop((xoffset, yoffset, xoffset+xwidth, xoffset+yheight))
         # convert the LED image to raw data
-        ledData =  byte[(imageWidth * imageHeight * 3) + 3]
-        image2data(ledPart, ledData, ledLayout[i])
+        ledData = image2data(ledImage[i], ledLayout[i])
         if (i == 0):
-            ledData[0] = '*'  # first Teensy is the frame sync master
+            #ledData[0] = '*'  # first Teensy is the frame sync master
             usec = int(((1000000.0 / framerate) * 0.75))
-            ledData[1] = (byte)(usec)   # request the frame sync pulse
-            ledData[2] = (byte)(usec >> 8) # at 75% of the frame time
+            #ledData[1] = int(usec)   # request the frame sync pulse
+            #ledData[2] = int(usec >> 8) # at 75% of the frame time
+            ledData = [ord('*'), int(usec), int(usec >> 8)].append(ledData)
+
         else:
-            ledData[0] = '%'  # others sync to the master board
-            ledData[1] = 0
-            ledData[2] = 0
+            #ledData[0] = '%'  # others sync to the master board
+            #ledData[1] = 0
+            #ledData[2] = 0
+            ledData = [ord('%'), 0, 0].append(ledData)
 
         # send the raw data to the LEDs  :-)
         print('write len: '+ledData.length)
         #ledSerial[i].write(ledData)
 
 
-### movieEvent runs for each new frame of movie data
-##void movieEvent(Movie m):
-##    # read the movie's next frame
-##    m.read()
-##    
-##    #if (framerate == 0) framerate = m.getSourceFrameRate()
-##    framerate = 30.0 # TODO, how to read the frame rate???
-##    
-##    for i in range(numPorts):
-##        # copy a portion of the movie's image to the LED image
-##        xoffset = percentage(m.width, ledArea[i].x)
-##        yoffset = percentage(m.height, ledArea[i].y)
-##        xwidth =  percentage(m.width, ledArea[i].width)
-##        yheight = percentage(m.height, ledArea[i].height)
-##        ledImage[i].copy(m, xoffset, yoffset, xwidth, yheight,
-##                         0, 0, ledImage[i].width, ledImage[i].height)
-##        # convert the LED image to raw data
-##        byte[] ledData =  new byte[(ledImage[i].width * ledImage[i].height * 3) + 3]
-##        image2data(ledImage[i], ledData, ledLayout[i])
-##        if (i == 0):
-##            ledData[0] = '*'  # first Teensy is the frame sync master
-##            int usec = (int)((1000000.0 / framerate) * 0.75)
-##            ledData[1] = (byte)(usec)   # request the frame sync pulse
-##            ledData[2] = (byte)(usec >> 8) # at 75% of the frame time
-##        else:
-##            ledData[0] = '%'  # others sync to the master board
-##            ledData[1] = 0
-##            ledData[2] = 0
-##        
-##        # send the raw data to the LEDs  :-)
-##        ledSerial[i].write(ledData) 
+## movieEvent runs for each new frame of movie data
+#def movieEvent(Movie m):
+#    # read the movie's next frame
+#    m.read()
+#    
+#    #if (framerate == 0) framerate = m.getSourceFrameRate()
+#    framerate = 30.0 # TODO, how to read the frame rate???
+#    
+#    for i in range(numPorts):
+#        # copy a portion of the movie's image to the LED image
+#        xoffset = percentage(m.width, ledArea[i].x)
+#        yoffset = percentage(m.height, ledArea[i].y)
+#        xwidth =  percentage(m.width, ledArea[i].width)
+#        yheight = percentage(m.height, ledArea[i].height)
+#        ledImage[i].copy(m, xoffset, yoffset, xwidth, yheight,
+#                         0, 0, ledImage[i].width, ledImage[i].height)
+#        # convert the LED image to raw data
+#        byte[] ledData =  new byte[(ledImage[i].width * ledImage[i].height * 3) + 3]
+#        image2data(ledImage[i], ledData, ledLayout[i])
+#        if (i == 0):
+#            ledData[0] = '*'  # first Teensy is the frame sync master
+#            int usec = (int)((1000000.0 / framerate) * 0.75)
+#            ledData[1] = (byte)(usec)   # request the frame sync pulse
+#            ledData[2] = (byte)(usec >> 8) # at 75% of the frame time
+#        else:
+#            ledData[0] = '%'  # others sync to the master board
+#            ledData[1] = 0
+#            ledData[2] = 0
+#        
+#        # send the raw data to the LEDs  :-)
+#        ledSerial[i].write(ledData) 
 
 
 # image2data converts an image to OctoWS2811's raw data format.
 # The number of vertical pixels in the image must be a multiple
 # of 8.  The data array must be the proper size for the image.
-def void image2data(image, data, layout):
+def image2data(image, layout):
     offset = 3
-    xbegin, xend, xinc, mask
-    linesPerPin = image.height / 8
-    pixel[] = new int[8]
+    #xbegin, xend, xinc, mask
+    print(image.size)
+    linesPerPin = image.size[1] // 8
+    pixel = {}
 
     for y in range(linesPerPin):
-        if ((y & 1) == (layout ? 0 : 1)):
+        print('strip:',y,'line:',linesPerPin)
+        if ((y & 1) == (0 if layout else 1)):
             # even numbered rows are left to right
             xbegin = 0
-            xend = image.width
+            xend = image.size[0]
             xinc = 1
         else:
             # odd numbered rows are right to left
-            xbegin = image.width - 1
+            xbegin = image.size[0] - 1
             xend = -1
             xinc = -1
-        for (x = xbegin; x != xend; x += xinc):
-            for (i=0; i < 8; i++):
+        imageData = image.getdata()
+        for x in range(xbegin,xend,xinc):
+            for i in range(8):
                 # fetch 8 pixels from the image, 1 for each pin
-                pixel[i] = image.pixels[x + (y + linesPerPin * i) * image.width]
-                pixel[i] = colorWiring(pixel[i])
+                pixel[i] = imageData[x + (y + linesPerPin * i) * image.size[0]]
+                #pixel[i] = colorWiring(pixel[i])
             # convert 8 pixels to 24 bytes
-            for (mask = 0x800000; mask != 0; mask >>= 1) {
-                byte b = 0
-                for (i=0; i < 8; i++):
+            mask = 0x800000
+            while (mask > 0):
+                b = 0
+                for i in range(8):
                     if ((pixel[i] & mask) != 0):
                         b |= (1 << i)
-                data[offset++] = b
+                data[offset] = b
+                offset += 1
+                mask >>= 1
 
+    imageOut = []
+    for i in sorted(pixel.keys()):
+        imageOut.append(pixel[i])
+
+    return imageOut
 
 
 ## image2data converts an image to OctoWS2811's raw data format.
@@ -297,48 +314,59 @@ def serialConfigure(portName):
         print('too many serial ports, please increase maxPorts')
         errorCount += 1
         return
-    try:
-        #ledSerial[numPorts] = serial.Serial(portName)
-        ser = serial.Serial(portName)
-        ledSerial[numPorts] = ser
-        if (ledSerial[numPorts] == None):
-            raise NullPointer
-        ledSerial[numPorts].write('?')
-    except serial.SerialException, msg:
-        print("Serial port " + portName + " does not exist or is non-functional\n{0}".format(msg[0]))
-        errorCount += 1
-        return
-    time.sleep(0.05)
-    line = ledSerial[numPorts].readline(100)
-    if (line == None):
-        print("Serial port " + portName + " is not responding.")
-        print("Is it really a Teensy 3.0 running VideoDisplay?")
-        errorCount += 1
-        return
-    param = line.rstrip().split(",")
-    print(param)
-    if (len(param) != 12):
-        print("Error: port " + portName + " did not respond to LED config query")
-        errorCount += 1
-        return
-    # only store the info and increase numPorts if Teensy responds properly
-    ledImage[numPorts] = Image.new('RGB', (int(param[0]), int(param[1])))
-    ledArea[numPorts] = ((int(param[5]), int(param[6])), (int(param[7]), int(param[8])))
-    ledLayout[numPorts] = (int(param[5]) == 0)
-    numPorts += 1
     
-    #ledImage[numPorts] = Image.new('RGB', Integer.parseInt(param[0]), Integer.parseInt(param[1]))
-    #ledArea[numPorts] = Rect((Integer.parseInt(param[5]), Integer.parseInt(param[6])),
-    #                         (Integer.parseInt(param[7]), Integer.parseInt(param[8])))
-    #ledLayout[numPorts] = (Integer.parseInt(param[5]) == 0)
-    #numPorts += 1
+    if 'dummy' == portName:
+        print('Configuring for:',portName)
+        param = [ledCnt,stripCnt,0,0,0,0,0,100,100]
+        ledImage[numPorts] = Image.new('RGB', (int(param[0]), int(param[1])))
+        print(ledImage[numPorts].size)
+        ledArea[numPorts] = ((int(param[5]), int(param[6])), (int(param[7]), int(param[8])))
+        ledLayout[numPorts] = (int(param[5]) == 0)
+        numPorts += 1
+    else:
+        try:
+            ledSerial[numPorts] = serial.Serial(portName)
+            #ser = serial.Serial(portName)
+            #ledSerial[numPorts] = ser
+            if (ledSerial[numPorts] == None):
+                raise NullPointer
+            ledSerial[numPorts].write('?')
+        except serial.SerialException, msg:
+            print("Serial port " + portName + " does not exist or is non-functional\n{0}".format(msg[0]))
+            errorCount += 1
+            return
+        time.sleep(0.05)
+        line = ledSerial[numPorts].readline(100)
+        if (line == None):
+            print("Serial port " + portName + " is not responding.")
+            print("Is it really a Teensy 3.0 running VideoDisplay?")
+            errorCount += 1
+            return
+        param = []
+        param = line.rstrip().split(",")
+        print(param)
+        if (len(param) != 12):
+            print("Error: port " + portName + " did not respond to LED config query")
+            errorCount += 1
+            return
+        # only store the info and increase numPorts if Teensy responds properly
+        ledImage[numPorts] = Image.new('RGB', (int(param[0]), int(param[1])))
+        ledArea[numPorts] = ((int(param[5]), int(param[6])), (int(param[7]), int(param[8])))
+        ledLayout[numPorts] = (int(param[5]) == 0)
+        numPorts += 1
+        
+        #ledImage[numPorts] = Image.new('RGB', Integer.parseInt(param[0]), Integer.parseInt(param[1]))
+        #ledArea[numPorts] = Rect((Integer.parseInt(param[5]), Integer.parseInt(param[6])),
+        #                         (Integer.parseInt(param[7]), Integer.parseInt(param[8])))
+        #ledLayout[numPorts] = (Integer.parseInt(param[5]) == 0)
+        #numPorts += 1
 
 
 # draw runs every time the screen is redrawn - update the frame...
 def draw():
     if (newImageQueue.qsize() > 0):
         imageBuff = newImageQueue.get()
-        nextImage = Image.new('RGB',(ledCnt,stripCnt))
+        nextImage = Image.new('RGB',(ledCnt, stripCnt))
         nextImage.putdata(imageBuff)
         print('Display:  Got image:',nextImage.size)
         #nextImage.show()
@@ -413,6 +441,6 @@ if __name__ == "__main__":
     setup()
     time.sleep(1)
     for i in range(10):
-        print('Display:  Attempt',i,'to draw')
+        #print('Display:  Attempt',i,'to draw')
         draw()
         time.sleep(1.5)

@@ -4,21 +4,21 @@ import time
 
 class DemoTransmitter(threading.Thread):
 
-    def __init__(self, stripCnt, ledCnt, queue):
+    def __init__(self, ledCnt, stripCnt, queue):
         threading.Thread.__init__(self)
         self._stop = threading.Event()
 
         self.demoMode = True
         self.animationStep = 0
-        self.ledCnt = ledCnt
         self.stripCnt = stripCnt
+        self.ledCnt = ledCnt
         self.imageQueue = queue
         self.interval = 10
-        #self.im = Image.new('RGB',(ledCnt,stripCnt))
+        #self.im = Image.new('RGB',(ledCnt, stripCnt))
 
 
     def makeDemoFrame(self):
-        im = Image.new('RGB',(self.ledCnt,self.stripCnt))
+        im = Image.new('RGB',(self.stripCnt,self.ledCnt))
 
         draw = ImageDraw.Draw(im)
         
@@ -38,7 +38,7 @@ class DemoTransmitter(threading.Thread):
         while (self.demoMode):
             if self.imageQueue.empty():
                 im = self.makeDemoFrame()
-                print('Transmit: Queue empty. Creating new image of size:',im.size)
+                #print('Transmit: Queue empty. Creating new image of size:',im.size)
                 if self.animationStep == 9:
                     #self.im.show()
                     self.demoMode = False
