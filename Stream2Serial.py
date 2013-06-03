@@ -145,7 +145,6 @@ def frameUpdate(f):
     global ledArea
     global ledSerial
 
-
     for i in range(numPorts):
         # copy a portion of the movie's image to the LED image
         imageWidth,imageHeight,colorDepth = ledImage[i].shape
@@ -158,35 +157,34 @@ def frameUpdate(f):
         yoffset = percentage(imageHeight, areaY)
         xwidth =  percentage(imageWidth, areaWidth)
         yheight = percentage(imageHeight, areaHeight)
-        #print('xoff',xoffset,'yoff',yoffset,'xw',xwidth,'yh',yheight,0,0,
+        #print('frameUpdate:','xoff',xoffset,'yoff',yoffset,'xw',xwidth,'yh',yheight,0,0,
         #        'iw',imageWidth,'ih',imageHeight,'aw',areaWidth,'ah',areaHeight)
         
         # now need to stuff the values into a Image
         #for i in range(ledCnt):
         #    for j in range(stripCnt):
         #        loc = i*stripCnt+j
-        ledPart = ledImage[i][xoffset:(xoffset+xwidth), yoffset:(yoffset+yheight)]
-        # convert the LED image to raw data
-        print('ledPart',ledPart.shape)
-        ledData = image2data(ledImage[i], ledLayout[i])
-        print('ledData',ledData.shape)
-        if (i == 0):
-            #ledData[0] = '*'  # first Teensy is the frame sync master
-            usec = int(((1000000.0 / framerate) * 0.75))
-            #ledData[1] = int(usec)   # request the frame sync pulse
-            #ledData[2] = int(usec >> 8) # at 75% of the frame time
-            ledData = [ord('*'), int(usec), int(usec >> 8)].append(ledData)
+       
+        ledImage[i] = f[xoffset:(xoffset+xwidth), yoffset:(yoffset+yheight)]
 
+        # convert the LED image to raw data
+        ledData = image2data(ledImage[i], ledLayout[i])
+        serialData = list(ledData.flatten())
+
+        if (i == 0):
+            usec = int(((1000000.0 / framerate) * 0.75))
+            serialData.insert(0, 0xff&int(usec >> 8)) # at 75% of the frame time
+            serialData.insert(0, 0xff&int(usec))   # request the frame sync pulse
+            serialData.insert(0, ord('*'))  # first Teensy is the frame sync master
         else:
-            #ledData[0] = '%'  # others sync to the master board
-            #ledData[1] = 0
-            #ledData[2] = 0
-            ledData = [ord('%'), 0, 0].append(ledData)
+            serialData.insert(0, 0)
+            serialData.insert(0, 0)
+            serialData.insert(0, ord('%'))  # others sync to the master board
 
         # send the raw data to the LEDs  :-)
-        print('write len: '+ledData.length)
-        #ledSerial[i].write(ledData)
-        del ledData
+        print(serialData[:(3+3*16)])
+        
+        #ledSerial[i].write(serialData)
 
 
 ## movieEvent runs for each new frame of movie data
@@ -228,30 +226,33 @@ def frameUpdate(f):
 def image2data(image, layout):
     offset = 3
     #xbegin, xend, xinc, mask
-    linesPerPin = image.shape[1] // 8
-    pixel = np.zeros(image.shape, 'uint8').flatten()
+    colCnt = image.shape[0]
+    rowCnt = image.shape[1]
+    linesPerPin = rowCnt // 8
+    pixel = np.zeros((8,colCnt*linesPerPin,3), 'uint8')
+    print('image2data pixels', pixel.shape)
 
-    print(image[5,0:8,...])
+    ledData = image.transpose((1,0,2))
+    print('image2data ledData',ledData.shape)
+    #print(ledData[0:4,0])
 
-    for y in range(linesPerPin):
-        print('strip:',y,'line:',linesPerPin)
-        if ((y & 1) == (0 if layout else 1)):
-            # even numbered rows are left to right
-            xbegin = 0
-            xend = image.shape[0]
-            xinc = 1
-        else:
-            # odd numbered rows are right to left
-            xbegin = image.shape[0] - 1
-            xend = -1
-            xinc = -1
-        imageData = image.flatten()
-        for x in range(xbegin,xend,xinc):
-            for i in range(8):
-                # fetch 8 pixels from the image, 1 for each pin
-                pixel[i] = imageData[x + (y + linesPerPin * i) * image.shape[0]]
-                #pixel[i] = colorWiring(pixel[i])
-            # convert 8 pixels to 24 bytes
+    for i in range(8):
+        for y in range(linesPerPin):
+            if ((y & 1) == (0 if layout else 1)):
+                # even numbered rows are left to right
+                #print('>'+str((i*linesPerPin)+y),'',end='')
+                pixel[i,y*colCnt:(y+1)*colCnt] = ledData[i*linesPerPin+y,:colCnt]
+                pass
+            else:
+                # odd numbered rows are right to left
+                #print('<'+str((i*linesPerPin)+y),'',end='')
+                pixel[i,y*colCnt:(y+1)*colCnt] = ledData[i*linesPerPin+y,colCnt::-1]
+                pass
+            #pixel[i] = colorWiring(pixel[i])
+        #print()
+
+
+#            # convert 8 pixels to 24 bytes
 #            mask = 0x800000
 #            while (mask > 0):
 #                b = 0
@@ -262,7 +263,7 @@ def image2data(image, layout):
 #                offset += 1
 #                mask >>= 1
 
-    return pixel
+    return pixel[:,::-1,:]
 
 
 ## image2data converts an image to OctoWS2811's raw data format.
@@ -376,14 +377,13 @@ def draw():
         tmp = Image.new('RGB',(ledCnt, stripCnt))
         tmp.putdata(imageBuff)
         print('Display:  Got image:',tmp.size)
-        tmp.show()
+        #tmp.show()
 
         nextImage = np.array(tmp.getdata()).reshape(tmp.size[0], tmp.size[1], 3)
-        print(nextImage.shape)
-        #nextImage.flatten().resize(tmpImage.size)
-        print(nextImage[0:3,0:3,:])
 
-        #frameUpdate(nextImage)
+        frameUpdate(nextImage)
+
+        print()
 
 
 ## draw runs every time the screen is redrawn - show the movie...
@@ -444,7 +444,7 @@ if __name__ == "__main__":
     print('Testing stream to serial')
     setup()
     time.sleep(1)
-    for i in range(10):
-        #print('Display:  Attempt',i,'to draw')
+    for i in range(6):
+        print('Display:  Attempt',i,'to draw')
         draw()
-        time.sleep(1.5)
+        time.sleep(.11)
