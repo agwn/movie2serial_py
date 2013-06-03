@@ -18,15 +18,17 @@ class DemoTransmitter(threading.Thread):
 
 
     def makeDemoFrame(self):
-        im = Image.new('RGB',(self.stripCnt,self.ledCnt))
+        im = Image.new('RGB',(self.ledCnt, self.stripCnt))
 
         draw = ImageDraw.Draw(im)
         
         for i in range(self.ledCnt):
-            if self.animationStep == i%self.interval:
-                draw.line((i,0,i,im.size[1]), fill=0xff0000)
-            else:
-                draw.line((i,0,i,im.size[1]), fill=0x0)
+            color = (0xff0000&(((i+self.animationStep)%0xff)<<17)) | (0x00ff00&(((i+self.animationStep)%0xff)<<9)) | (0x0000ff&(((i+self.animationStep)%0xff)<<1))
+            draw.line((i,0,i,im.size[1]), fill=(color))
+            #if self.animationStep == i%self.interval:
+            #    draw.line((i,0,i,im.size[1]), fill=0xff0000)
+            #else:
+            #    draw.line((i,0,i,im.size[1]), fill=0x0)
         del draw
                 
         self.animationStep = (self.animationStep+1)%self.interval

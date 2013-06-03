@@ -7,8 +7,11 @@ import platform         # os identification
 
 import serial           # serial output
 import time             # delays
-#import numpy as np      # arrays
+
 from PIL import Image   # PIL
+import numpy as np      # arrays
+from scipy import ndimage
+
 from threading import Thread
 from Queue import Queue
 from DemoTransmitter import DemoTransmitter
@@ -25,7 +28,7 @@ ledArea = {}            # the area of the movie each port gets, in % (0-100)
 ledLayout = {}          # layout of rows, true = even is left->right
 ledImage = {}           # image sent to each port
 errorCount = 0
-framerate = 0
+framerate = 15
 
 stripCnt = 32           # Number of strips around the circumference of the sphere
 ledCnt = 60             # Number of lights along the strip
@@ -72,7 +75,7 @@ def setup():
     # create window
     #size(ledCnt, stripCnt)  # create the window
     
-    demoTransmitter = DemoTransmitter(stripCnt, ledCnt, newImageQueue)
+    demoTransmitter = DemoTransmitter(ledCnt, stripCnt, newImageQueue)
     demoTransmitter.start()
 
 
@@ -119,7 +122,7 @@ def receive(data, ip, port):
         print('Buffer full, dropping frame!')
         return
 
-    newImage = Image.new('RGB',(ledCnt, stripCnt))
+    newImage = np.zeros((ledCnt, stripCnt,3), 'uint8')
 
 #    for i in range(stripCnt*ledCnt):
 #        newImage[i] = (int)(0xff<<24 | mapByte(data[i*3 + 1])<<16) | (mapByte(data[i*3 + 2])<<8) | (mapByte(data[i*3 + 3]))
@@ -145,8 +148,7 @@ def frameUpdate(f):
 
     for i in range(numPorts):
         # copy a portion of the movie's image to the LED image
-        print(ledImage[i].size)
-        imageWidth,imageHeight = ledImage[i].size
+        imageWidth,imageHeight,colorDepth = ledImage[i].shape
         areaX  = ledArea[i][0][0]
         areaY = ledArea[i][0][1]
         areaWidth  = ledArea[i][1][0]-ledArea[i][0][0]
@@ -158,9 +160,16 @@ def frameUpdate(f):
         yheight = percentage(imageHeight, areaHeight)
         #print('xoff',xoffset,'yoff',yoffset,'xw',xwidth,'yh',yheight,0,0,
         #        'iw',imageWidth,'ih',imageHeight,'aw',areaWidth,'ah',areaHeight)
-        ledPart = ledImage[i].crop((xoffset, yoffset, xoffset+xwidth, xoffset+yheight))
+        
+        # now need to stuff the values into a Image
+        #for i in range(ledCnt):
+        #    for j in range(stripCnt):
+        #        loc = i*stripCnt+j
+        ledPart = ledImage[i][xoffset:(xoffset+xwidth), yoffset:(yoffset+yheight)]
         # convert the LED image to raw data
+        print('ledPart',ledPart.shape)
         ledData = image2data(ledImage[i], ledLayout[i])
+        print('ledData',ledData.shape)
         if (i == 0):
             #ledData[0] = '*'  # first Teensy is the frame sync master
             usec = int(((1000000.0 / framerate) * 0.75))
@@ -177,6 +186,7 @@ def frameUpdate(f):
         # send the raw data to the LEDs  :-)
         print('write len: '+ledData.length)
         #ledSerial[i].write(ledData)
+        del ledData
 
 
 ## movieEvent runs for each new frame of movie data
@@ -218,44 +228,41 @@ def frameUpdate(f):
 def image2data(image, layout):
     offset = 3
     #xbegin, xend, xinc, mask
-    print(image.size)
-    linesPerPin = image.size[1] // 8
-    pixel = {}
+    linesPerPin = image.shape[1] // 8
+    pixel = np.zeros(image.shape, 'uint8').flatten()
+
+    print(image[5,0:8,...])
 
     for y in range(linesPerPin):
         print('strip:',y,'line:',linesPerPin)
         if ((y & 1) == (0 if layout else 1)):
             # even numbered rows are left to right
             xbegin = 0
-            xend = image.size[0]
+            xend = image.shape[0]
             xinc = 1
         else:
             # odd numbered rows are right to left
-            xbegin = image.size[0] - 1
+            xbegin = image.shape[0] - 1
             xend = -1
             xinc = -1
-        imageData = image.getdata()
+        imageData = image.flatten()
         for x in range(xbegin,xend,xinc):
             for i in range(8):
                 # fetch 8 pixels from the image, 1 for each pin
-                pixel[i] = imageData[x + (y + linesPerPin * i) * image.size[0]]
+                pixel[i] = imageData[x + (y + linesPerPin * i) * image.shape[0]]
                 #pixel[i] = colorWiring(pixel[i])
             # convert 8 pixels to 24 bytes
-            mask = 0x800000
-            while (mask > 0):
-                b = 0
-                for i in range(8):
-                    if ((pixel[i] & mask) != 0):
-                        b |= (1 << i)
-                data[offset] = b
-                offset += 1
-                mask >>= 1
+#            mask = 0x800000
+#            while (mask > 0):
+#                b = 0
+#                for i in range(8):
+#                    if ((pixel[i] & mask) != 0):
+#                        b |= (1 << i)
+#                data[offset] = b
+#                offset += 1
+#                mask >>= 1
 
-    imageOut = []
-    for i in sorted(pixel.keys()):
-        imageOut.append(pixel[i])
-
-    return imageOut
+    return pixel
 
 
 ## image2data converts an image to OctoWS2811's raw data format.
@@ -318,8 +325,8 @@ def serialConfigure(portName):
     if 'dummy' == portName:
         print('Configuring for:',portName)
         param = [ledCnt,stripCnt,0,0,0,0,0,100,100]
-        ledImage[numPorts] = Image.new('RGB', (int(param[0]), int(param[1])))
-        print(ledImage[numPorts].size)
+        ledImage[numPorts] = np.zeros((int(param[0]), int(param[1]), 3), 'uint8')
+        print(ledImage[numPorts].shape)
         ledArea[numPorts] = ((int(param[5]), int(param[6])), (int(param[7]), int(param[8])))
         ledLayout[numPorts] = (int(param[5]) == 0)
         numPorts += 1
@@ -350,7 +357,7 @@ def serialConfigure(portName):
             errorCount += 1
             return
         # only store the info and increase numPorts if Teensy responds properly
-        ledImage[numPorts] = Image.new('RGB', (int(param[0]), int(param[1])))
+        ledImage[numPorts] = np.zeros((int(param[0]), int(param[1]), 3), 'uint8')
         ledArea[numPorts] = ((int(param[5]), int(param[6])), (int(param[7]), int(param[8])))
         ledLayout[numPorts] = (int(param[5]) == 0)
         numPorts += 1
@@ -366,20 +373,17 @@ def serialConfigure(portName):
 def draw():
     if (newImageQueue.qsize() > 0):
         imageBuff = newImageQueue.get()
-        nextImage = Image.new('RGB',(ledCnt, stripCnt))
-        nextImage.putdata(imageBuff)
-        print('Display:  Got image:',nextImage.size)
-        #nextImage.show()
+        tmp = Image.new('RGB',(ledCnt, stripCnt))
+        tmp.putdata(imageBuff)
+        print('Display:  Got image:',tmp.size)
+        tmp.show()
 
-        # now need to stuff the values into a Image
-#        for i in range(ledCnt):
-#            print(i,': ',end='')
-#            for j in range(stripCnt):
-#                #loc = i*stripCnt+j
-#                print(nextImage.getpixel((i,j)),'',end='')
-#            print()
-    
-        frameUpdate(nextImage)
+        nextImage = np.array(tmp.getdata()).reshape(tmp.size[0], tmp.size[1], 3)
+        print(nextImage.shape)
+        #nextImage.flatten().resize(tmpImage.size)
+        print(nextImage[0:3,0:3,:])
+
+        #frameUpdate(nextImage)
 
 
 ## draw runs every time the screen is redrawn - show the movie...
