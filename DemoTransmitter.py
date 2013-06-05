@@ -12,7 +12,7 @@ class DemoTransmitter(threading.Thread):
         self.stripCnt = stripCnt
         self.ledCnt = ledCnt
         self.imageQueue = queue
-        self.interval = 3
+        self.interval = 9
         self.animationStep = 1
         #self.im = Image.new('RGB',(ledCnt, stripCnt))
 
@@ -42,8 +42,8 @@ class DemoTransmitter(threading.Thread):
                 im = self.makeDemoFrame()
                 #print('Transmit: Queue empty. Creating new image of size:',im.size)
                 if self.animationStep == self.interval+2:
-                    #self.im.show()
-                    self.demoMode = False
+                    #self.demoMode = False
+                    pass
                 else:
                     #print self.animationStep
                     self.imageQueue.put(im.getdata())
