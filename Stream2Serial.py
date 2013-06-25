@@ -65,7 +65,7 @@ def setup():
     else:
         # should not get here
         serialPort = 'dummy'
-    serialPort = 'dummy'
+    #serialPort = 'dummy'
     serialConfigure(serialPort)
     
     # configure input
@@ -169,12 +169,14 @@ def frameUpdate(f):
 
         # convert the LED image to raw data
         ledData = image2data(ledImage[i], ledLayout[i])
-        serialData = list(ledData.flatten())
+        serialData = list(ledData)
 
         if (i == 0):
-            usec = int(((1000000.0 / framerate) * 0.75))
-            serialData.insert(0, 0xff&int(usec >> 8)) # at 75% of the frame time
-            serialData.insert(0, 0xff&int(usec))   # request the frame sync pulse
+            #usec = int(((1000000.0 / framerate) * 0.75))
+            #serialData.insert(0, 0xff&int(usec >> 8)) # at 75% of the frame time
+            #serialData.insert(0, 0xff&int(usec))   # request the frame sync pulse
+            serialData.insert(0, 0xff) # at 75% of the frame time
+            serialData.insert(0, 0xff)   # request the frame sync pulse
             serialData.insert(0, ord('*'))  # first Teensy is the frame sync master
         else:
             serialData.insert(0, 0)
@@ -182,9 +184,9 @@ def frameUpdate(f):
             serialData.insert(0, ord('%'))  # others sync to the master board
 
         # send the raw data to the LEDs  :-)
-        print(serialData[:(3+3*16)])
-        
-        #ledSerial[i].write(serialData)
+        print('len:',len(serialData))
+
+        ledSerial[i].write(''.join(chr(b) for b in serialData))
 
 
 ## movieEvent runs for each new frame of movie data
@@ -224,16 +226,19 @@ def frameUpdate(f):
 # The number of vertical pixels in the image must be a multiple
 # of 8.  The data array must be the proper size for the image.
 def image2data(image, layout):
-    offset = 3
+    #offset = 0
     #xbegin, xend, xinc, mask
     colCnt = image.shape[0]
     rowCnt = image.shape[1]
     linesPerPin = rowCnt // 8
     pixel = np.zeros((8,colCnt*linesPerPin,3), 'uint8')
-    print('image2data pixels', pixel.shape)
+    bitBuffer = np.zeros((8*(colCnt*linesPerPin)*3), 'uint8')
 
     ledData = image.transpose((1,0,2))
+    
+    print('image2data pixels', pixel.shape)
     print('image2data ledData',ledData.shape)
+    print('image2data bitBuffer',bitBuffer.shape)
     #print(ledData[0:4,0])
 
     for i in range(8):
@@ -251,19 +256,29 @@ def image2data(image, layout):
             #pixel[i] = colorWiring(pixel[i])
         #print()
 
+    byteCnt = 0
+    for led in range(colCnt*linesPerPin):
+        for color in range(3):
+            for bit in range(8):
+                bitsOut = 0
+                for pin in range(8):
+                    if ((0x80>>bit) & pixel[pin,led,color]):
+                        bitsOut |= 1 << pin
+                bitBuffer[byteCnt] = bitsOut
+                byteCnt += 1
+                        
+#        # convert pixels to bytes
+#        mask = 0x800000
+#        while (mask > 0):
+#            b = 0
+#            for i in range(8):
+#                if ((pixel[i] & mask) != 0):
+#                    b |= (1 << i)
+#            data[offset] = b
+#            offset += 1
+#            mask >>= 1
 
-#            # convert 8 pixels to 24 bytes
-#            mask = 0x800000
-#            while (mask > 0):
-#                b = 0
-#                for i in range(8):
-#                    if ((pixel[i] & mask) != 0):
-#                        b |= (1 << i)
-#                data[offset] = b
-#                offset += 1
-#                mask >>= 1
-
-    return pixel[:,::-1,:]
+    return bitBuffer
 
 
 ## image2data converts an image to OctoWS2811's raw data format.
@@ -334,8 +349,8 @@ def serialConfigure(portName):
     else:
         try:
             ledSerial[numPorts] = serial.Serial(portName)
-            #ser = serial.Serial(portName)
-            #ledSerial[numPorts] = ser
+            ser = serial.Serial(portName)
+            ledSerial[numPorts] = ser
             if (ledSerial[numPorts] == None):
                 raise NullPointer
             ledSerial[numPorts].write('?')
@@ -344,6 +359,7 @@ def serialConfigure(portName):
             errorCount += 1
             return
         time.sleep(0.05)
+        print('reading device info')
         line = ledSerial[numPorts].readline(100)
         if (line == None):
             print("Serial port " + portName + " is not responding.")
@@ -443,8 +459,8 @@ def percentageFloat(percent):
 if __name__ == "__main__":
     print('Testing stream to serial')
     setup()
-    time.sleep(1)
-    for i in range(6):
+    time.sleep(0.1)
+    for i in range(9):
         print('Display:  Attempt',i,'to draw')
         draw()
-        time.sleep(.11)
+        time.sleep(.5)
