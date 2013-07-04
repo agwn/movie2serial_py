@@ -12,7 +12,7 @@ class DemoTransmitter(threading.Thread):
         self.stripCnt = stripCnt
         self.ledCnt = ledCnt
         self.imageQueue = queue
-        self.interval = 8
+        self.interval = 6
         self.animationStep = 0
         #self.im = Image.new('RGB',(ledCnt, stripCnt))
 
@@ -20,19 +20,15 @@ class DemoTransmitter(threading.Thread):
     def makeDemoFrame(self):
         im = Image.new('RGB',(self.ledCnt, self.stripCnt))
 
-        draw = ImageDraw.Draw(im)
-        
-        for i in range(self.ledCnt):
-            #color = (0xff0000&(((i+self.animationStep)%0xff)<<16)) | (0x00ff00&(((i+self.animationStep)%0xff)<<8)) | (0x0000ff&(((i+self.animationStep)%0xff)<<0))
-            #draw.line((i,0,i,im.size[1]), fill=(color))
-            if ((self.animationStep%self.interval) == (i%self.interval)):
-                draw.line((i,0,i,im.size[1]), fill=0xff0000)
-            else:
-                draw.line((i,0,i,im.size[1]), fill=0x0)
-        del draw
-                
+        for i in range(im.size[0]):
+            if ((i%self.interval) == (self.animationStep%self.interval)):
+            #if (0 == (i%self.interval)):
+                for j in range(im.size[1]):
+                    im.putpixel((i,j),0xFF0000)
+
         self.animationStep = self.animationStep+1
         
+        #im.show()
         return im
 
 

@@ -186,48 +186,80 @@ def frameUpdate(f):
 def image2data(image, layout):
     debugConvert = False
 
-    #offset = 0
-    #xbegin, xend, xinc, mask
     colCnt = image.shape[0]
     rowCnt = image.shape[1]
     linesPerPin = rowCnt // 8
     pixel = np.zeros((8,colCnt*linesPerPin,3), 'uint8')
     bitBuffer = np.zeros((8*(colCnt*linesPerPin)*3), 'uint8')
 
-    ledData = image.transpose((1,0,2))
+    #ledData = image.transpose((1,0,2))
+    ledData = image
     
-    print('image2data pixels', pixel.shape)
-    print('image2data ledData',ledData.shape)
-    print('image2data bitBuffer',bitBuffer.shape)
-    #print(ledData[0:4,0])
+    if True:
+        print('image2data ledData',ledData.shape)
+        print(ledData[0,0:8])
+        print()
+        print('image2data pixels', pixel.shape)
+        print(pixel[0,0:8,:])
+        print()
 
     for i in range(8):
         for y in range(linesPerPin):
-            if ((y & 1) == (0 if layout else 1)):
+            if ((y%2) == (0 if layout else 1)):
                 # even numbered rows are left to right
                 if debugConvert:
                     print('>'+str((i*linesPerPin)+y),'',end='')
-                pixel[i,y*colCnt:(y+1)*colCnt] = ledData[i*linesPerPin+y,:colCnt]
+                #print(i, y*colCnt,ledData[:, i*linesPerPin+y])
+                pixel[i, y*colCnt:(y+1)*colCnt] = ledData[:, i*linesPerPin+y]
             else:
                 # odd numbered rows are right to left
-                #print('<'+str((i*linesPerPin)+y),'',end='')
-                pixel[i,y*colCnt:(y+1)*colCnt] = ledData[i*linesPerPin+y,colCnt::-1]
-                pass
-            #pixel[i] = colorWiring(pixel[i])
+                if debugConvert:
+                    print('<'+str((i*linesPerPin)+y),'',end='')
+                pixel[i, y*colCnt:(y+1)*colCnt] = ledData[colCnt::-1, i*linesPerPin+y]
+            
+            if False:
+                print('image2data pixels', pixel.shape)
+                print(pixel[0,0:8])
+                print()
+
         if debugConvert:
             print()
 
+    if False:
+        print('image2data pixels', pixel.shape)
+        print(pixel[0,0:8,:])
+        print()
+    
     byteCnt = 0
     for led in range(colCnt*linesPerPin):
         for color in range(3):
             for bit in range(8):
                 bitsOut = 0
                 for pin in range(8):
+                    #print(led,color,bit,':',pixel[pin,led,color])
                     if ((0x80>>bit) & pixel[pin,led,color]):
                         bitsOut |= 1 << pin
+                #print(byteCnt,led,color,bit,'{0:02X}'.format(bitsOut))
                 bitBuffer[byteCnt] = bitsOut
                 byteCnt += 1
-                        
+
+    if False:
+        print('image2data bitBuffer',bitBuffer.shape)
+        for i in range(8):
+            offset = i*24
+            print(bitBuffer[offset:offset+8])
+            print(bitBuffer[offset+8:offset+16])
+            print(bitBuffer[offset+16:offset+24])
+            print()
+
+#    for i in range(8*(colCnt*linesPerPin)*3):
+#        if (16 < (i%24)):
+#            bitBuffer[i] = 0xff
+#        else:
+#            bitBuffer[i] = 0x00
+
+    return bitBuffer
+
 #        # convert pixels to bytes
 #        mask = 0x800000
 #        while (mask > 0):
@@ -238,9 +270,6 @@ def image2data(image, layout):
 #            data[offset] = b
 #            offset += 1
 #            mask >>= 1
-
-    return bitBuffer
-
 
 # translate the 24 bit color from RGB to the actual
 # order used by the LED wiring.  GRB is the most common.
@@ -322,7 +351,6 @@ def draw():
         #tmp.show()
 
         nextImage = np.array(tmp.getdata()).reshape(tmp.size[0], tmp.size[1], 3)
-
         frameUpdate(nextImage)
 
         print()
