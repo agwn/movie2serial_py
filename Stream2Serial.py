@@ -42,10 +42,10 @@ newImageQueue = None
 demoTransmitter = None
 
 
-#UDP_IP = "127.0.0.1"
-#UDP_PORT = 58082
+UDP_IP = "127.0.0.1"
+UDP_PORT = 58082
 
-#udp = None
+udp = None
 
 maxConvertedByte = 0
 
@@ -71,8 +71,8 @@ def setup():
     serialConfigure(serialPort)
     
     # configure input
-    #udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)     # UDP
-    #udp.bind((UDP_IP, UDP_PORT))
+    udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)     # UDP
+    udp.bind((UDP_IP, UDP_PORT))
     
     # create window
     #size(ledCnt, stripCnt)  # create the window
@@ -138,6 +138,7 @@ def receive(data, ip, port):
 
 # frameUpdate runs for each new frame received from newImageQueue
 def frameUpdate(f):
+    global numPorts
     global ledImage
     global ledArea
     global ledSerial
@@ -159,7 +160,7 @@ def frameUpdate(f):
         ledImage[i] = f[xoffset:(xoffset+xwidth), yoffset:(yoffset+yheight)]
 
         # convert the LED image to raw data
-        ledData = image2data(ledImage[i], ledLayout[i])
+        ledData = bytes2bits(ledImage[i], ledLayout[i])
         serialData = list(ledData)
 
         if (i == 0):
@@ -180,45 +181,41 @@ def frameUpdate(f):
         ledSerial[i].write(''.join(chr(b) for b in serialData))
 
 
-# image2data converts an image to OctoWS2811's raw data format.
+# bytes2bits converts an image to OctoWS2811's raw data format.
 # The number of vertical pixels in the image must be a multiple
 # of 8.  The data array must be the proper size for the image.
-def image2data(image, layout):
+def bytes2bits(ledData, layout):
     debugConvert = False
 
-    colCnt = image.shape[0]
-    rowCnt = image.shape[1]
+    colCnt, rowCnt, depth = ledData.shape
     linesPerPin = rowCnt // 8
     pixel = np.zeros((8,colCnt*linesPerPin,3), 'uint8')
     bitBuffer = np.zeros((8*(colCnt*linesPerPin)*3), 'uint8')
 
-    #ledData = image.transpose((1,0,2))
-    ledData = image
-    
-    if True:
-        print('image2data ledData',ledData.shape)
-        print(ledData[0,0:8])
-        print()
-        print('image2data pixels', pixel.shape)
-        print(pixel[0,0:8,:])
+    if False:
+        print('bytes2bits ledData',ledData.shape)
+        print(ledData[0:8,0])
         print()
 
     for i in range(8):
         for y in range(linesPerPin):
+            #print(i, y, y*colCnt)
+            #print(i*linesPerPin+y,ledData[0, i*linesPerPin+y])
             if ((y%2) == (0 if layout else 1)):
                 # even numbered rows are left to right
                 if debugConvert:
                     print('>'+str((i*linesPerPin)+y),'',end='')
-                #print(i, y*colCnt,ledData[:, i*linesPerPin+y])
-                pixel[i, y*colCnt:(y+1)*colCnt] = ledData[:, i*linesPerPin+y]
+                #pixel[i, y*colCnt:(y+1)*colCnt] = ledData[:, i*linesPerPin+y]
+                pixel[i, y*colCnt:(y+1)*colCnt] = ledData[0:60, i*linesPerPin+y]
             else:
                 # odd numbered rows are right to left
                 if debugConvert:
                     print('<'+str((i*linesPerPin)+y),'',end='')
+                #pixel[i, y*colCnt:(y+1)*colCnt] = ledData[colCnt::-1, i*linesPerPin+y]
                 pixel[i, y*colCnt:(y+1)*colCnt] = ledData[colCnt::-1, i*linesPerPin+y]
             
             if False:
-                print('image2data pixels', pixel.shape)
+                print('bytes2bits pixels', pixel.shape)
                 print(pixel[0,0:8])
                 print()
 
@@ -226,7 +223,7 @@ def image2data(image, layout):
             print()
 
     if False:
-        print('image2data pixels', pixel.shape)
+        print('bytes2bits pixels', pixel.shape)
         print(pixel[0,0:8,:])
         print()
     
@@ -244,7 +241,7 @@ def image2data(image, layout):
                 byteCnt += 1
 
     if False:
-        print('image2data bitBuffer',bitBuffer.shape)
+        print('bytes2bits bitBuffer',bitBuffer.shape)
         for i in range(8):
             offset = i*24
             print(bitBuffer[offset:offset+8])
@@ -259,17 +256,6 @@ def image2data(image, layout):
 #            bitBuffer[i] = 0x00
 
     return bitBuffer
-
-#        # convert pixels to bytes
-#        mask = 0x800000
-#        while (mask > 0):
-#            b = 0
-#            for i in range(8):
-#                if ((pixel[i] & mask) != 0):
-#                    b |= (1 << i)
-#            data[offset] = b
-#            offset += 1
-#            mask >>= 1
 
 # translate the 24 bit color from RGB to the actual
 # order used by the LED wiring.  GRB is the most common.
@@ -350,7 +336,8 @@ def draw():
         print('Display:  Got image:',tmp.size)
         #tmp.show()
 
-        nextImage = np.array(tmp.getdata()).reshape(tmp.size[0], tmp.size[1], 3)
+        #nextImage = np.array(tmp.getdata(),np.uint8).reshape(tmp.size[1], tmp.size[0], 3)
+        nextImage = np.array(tmp).transpose((1,0,2))
         frameUpdate(nextImage)
 
         print()

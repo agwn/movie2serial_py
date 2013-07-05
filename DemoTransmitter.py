@@ -22,12 +22,11 @@ class DemoTransmitter(threading.Thread):
 
         for i in range(im.size[0]):
             if ((i%self.interval) == (self.animationStep%self.interval)):
-            #if (0 == (i%self.interval)):
                 for j in range(im.size[1]):
                     im.putpixel((i,j),0xFF0000)
 
         self.animationStep = self.animationStep+1
-        
+
         #im.show()
         return im
 
